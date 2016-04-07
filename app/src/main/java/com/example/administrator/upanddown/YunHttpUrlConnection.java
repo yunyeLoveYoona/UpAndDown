@@ -1,8 +1,14 @@
 package com.example.administrator.upanddown;
 
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
+
+import com.example.administrator.upanddown.cache.DiskLruCache;
+import com.example.administrator.upanddown.cache.ImageCache;
+import com.example.administrator.upanddown.cache.ImageDiskLruCache;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
@@ -41,6 +47,10 @@ public class YunHttpUrlConnection implements Runnable, Comparable {
     private int number = 0;
     private File file;
     private int tag;
+    private int width;
+    private int height;
+    private ImageDiskLruCache diskLruCache;
+
 
     public YunHttpUrlConnection(String url, Looper mainLooper) {
         try {
@@ -173,6 +183,12 @@ public class YunHttpUrlConnection implements Runnable, Comparable {
         this.tag = tag;
     }
 
+    public void setImageDownLoad(int width, int height, int tag) {
+        this.width = width;
+        this.height = height;
+        this.tag = tag;
+    }
+
     private void downLoad() {
         if (url != null) {
             try {
@@ -180,29 +196,34 @@ public class YunHttpUrlConnection implements Runnable, Comparable {
                 httpURLConnection.setConnectTimeout(5000);
                 httpURLConnection.setRequestMethod("GET");
                 RandomAccessFile randomAccessFile = null;
+
                 if (file.exists()) {
                     String start = "bytes=" + file.length() + "-";
                     httpURLConnection.setRequestProperty("Range", start);
-                    randomAccessFile = new RandomAccessFile(file.getAbsolutePath(),"rw");
+                    randomAccessFile = new RandomAccessFile(file.getAbsolutePath(), "rw");
                     randomAccessFile.seek(file.length());
+
                 } else {
                     file.createNewFile();
                 }
                 final int fileLenght = httpURLConnection.getContentLength();
+                if (file.length() == fileLenght) {
+                    return;
+                }
                 InputStream inputStream = httpURLConnection.getInputStream();
-                byte[] buffer = new byte[4096];
+                byte[] buffer = new byte[1024];
                 int length = -1;
                 compeleteSize = 0;
                 OutputStream ouput = new FileOutputStream(file);
-                while ((length = inputStream.read(buffer)) != -1) {
-                    if(randomAccessFile!=null){
-                        randomAccessFile.write(buffer);
-                    }else{
-                        ouput.write(buffer);
+                while ((length = inputStream.read(buffer)) > 0) {
+                    if (randomAccessFile != null) {
+                        randomAccessFile.write(buffer, 0, length);
+                    } else {
+                        ouput.write(buffer, 0, length);
                     }
-
-
-                    compeleteSize = compeleteSize + length;
+                    if (length > 0) {
+                        compeleteSize = compeleteSize + length;
+                    }
                     if (onDownLoadListener != null) {
                         handler.post(new Runnable() {
                             @Override
@@ -213,7 +234,7 @@ public class YunHttpUrlConnection implements Runnable, Comparable {
                     }
                 }
                 ouput.close();
-                if(randomAccessFile!=null){
+                if (randomAccessFile != null) {
                     randomAccessFile.close();
                 }
                 if (onDownLoadListener != null) {
@@ -234,14 +255,91 @@ public class YunHttpUrlConnection implements Runnable, Comparable {
         }
     }
 
+    private void downImage() {
+        if (url != null) {
+            try {
+                httpURLConnection = (HttpURLConnection) this.url.openConnection();
+                httpURLConnection.setConnectTimeout(5000);
+                httpURLConnection.setRequestMethod("GET");
+                InputStream is = httpURLConnection.getInputStream();
+                Bitmap bitmap = null;
+                if (is != null) {
+                    try {
+                        byte[] data = readStream(is);
+                        BitmapFactory.Options options = new BitmapFactory.Options();
+                        options.inJustDecodeBounds = true;
+                        BitmapFactory.decodeByteArray(data, 0, data.length,
+                                options);
+                        if (options.outWidth > width
+                                && options.outHeight > height
+                                && (width != 0 && height != 0)) {
+                            options.inSampleSize = options.outWidth / width >= options.outHeight
+                                    / height ? options.outWidth / width
+                                    : options.outHeight / height;
+                        }
+                        options.inJustDecodeBounds = false;
+                        bitmap = BitmapFactory.decodeByteArray(data, 0,
+                                data.length, options);
+                        ImageCache.getInstance().put(url.getPath() + width + "*" + height, bitmap);
+                        diskLruCache.putBitmap(url.getPath() + width + "*" + height, bitmap);
+                        if (onDownLoadListener != null) {
+                            handler.post(new Runnable() {
+                                             @Override
+                                             public void run() {
+                                                 onDownLoadListener.onSuccess();
+                                             }
+                                         }
+                            );
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    if (onDownLoadListener != null) {
+                        onDownLoadListener.onFail("file not found");
+                    }
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+                if (onDownLoadListener != null) {
+                    onDownLoadListener.onFail(e.getMessage());
+                }
+            }
+        }
+
+    }
+
+    /*
+     * 得到图片字节流 数组大小
+	 */
+    public byte[] readStream(InputStream inStream) throws Exception {
+        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+        byte[] buffer = new byte[1024];
+        int len = 0;
+        while ((len = inStream.read(buffer)) != -1) {
+            outStream.write(buffer, 0, len);
+        }
+        outStream.close();
+        inStream.close();
+        return outStream.toByteArray();
+    }
 
     private String encode(String value) throws UnsupportedEncodingException {
         return URLEncoder.encode(value, "UTF-8");
     }
 
+    public void setDiskLruCache(ImageDiskLruCache diskLruCache) {
+        this.diskLruCache = diskLruCache;
+    }
+
     @Override
     public void run() {
-        downLoad();
+        if (file != null) {
+            downLoad();
+        } else {
+            downImage();
+            diskLruCache = null;
+        }
     }
 
 
@@ -249,4 +347,6 @@ public class YunHttpUrlConnection implements Runnable, Comparable {
     public int compareTo(Object another) {
         return 0;
     }
+
+
 }

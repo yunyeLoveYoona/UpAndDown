@@ -13,6 +13,7 @@ import java.io.File;
 public class MainActivity extends ActionBarActivity {
 
     private TextView textView;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -34,16 +35,15 @@ public class MainActivity extends ActionBarActivity {
 
             @Override
             public void onProgress(int tag, int percent) {
-                textView.setText(percent+"%");
+                textView.setText(percent + "%");
 
             }
         };
-        yunDownLoadQueue.addDownload("http://img3.imgtn.bdimg.com/it/u=4053888973,1375713600&fm=21&gp=0.jpg" +
-                "", new File(sdCard + "/img2.jpg"), 1, onDownLoadListener);
-        yunDownLoadQueue.addDownload("http://www.netreds.com/bbs/d/file/tupianzha" +
-                        "n/meinvtupian/2014-06-29/3bbca576fa4cba8a213d8be2a" +
-                        "33304e2.jpg", new File(sdCard + "/img1.jpg"), 1, onDownLoadListener
+        yunDownLoadQueue.addImageDownload("http://img1.3lian.com/2015/w7/98/d/22.jpg", 100, 100, 1, onDownLoadListener);
+        yunDownLoadQueue.addImageDownload("http://pic1.nipic.com/2008-12-09/200812910493588_2.jpg"
+                , 100, 100, 1, onDownLoadListener
         );
+        yunDownLoadQueue.addDownload("http://dlsoft2.downza.cn//2016/02/com.tencent.mm_054825.apk", new File(sdCard + "/wechat.apk"), 1, onDownLoadListener);
     }
 
 
